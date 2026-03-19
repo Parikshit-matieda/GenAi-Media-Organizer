@@ -1,0 +1,46 @@
+# Python
+**/venv/
+**/venv_stable/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.Python
+**/env/
+**/bin/
+**/lib/
+**/include/
+**/share/
+
+# Django
+**/db.sqlite3
+**/db.sqlite3-journal
+**/media/
+**/static/
+**/staticfiles/
+
+# Node
+**/node_modules/
+**/dist/
+**/build/
+**/.npm
+**/*.log
+
+# IDEs
+**/.vscode/
+**/.idea/
+**/.settings/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Other
+yolov8n.pt
+**/dlib-19.24.1-cp311-cp311-win_amd64.whl
+**/dlib_build_log.txt
+**/dlib_build_log_2.txt
+**/dlib_error_vs.log
+**/error.log
+**/face_data.txt
+**/face_request_log.txt

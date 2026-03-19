@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Gallery AI</title>
+    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <meta name="description" content="AI-powered photo sharing and smart tagging gallery.">
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="app-container">
+        <header>
+            <h1 class="glow-text">Smart Gallery <span class="ai-badge">AI</span></h1>
+            <p class="subtitle">Experience the future of photo sharing</p>
+        </header>
+
+        <main id="main-content">
+            <!-- Home View -->
+            <section id="home-view" class="view active">
+                <div class="card-grid">
+                    <div class="glass-card interactive" id="btn-create-room">
+                        <div class="card-icon">🏠</div>
+                        <h3>Create Room</h3>
+                        <p>Start a new event and share with friends.</p>
+                    </div>
+                    <div class="glass-card interactive" id="btn-join-room-trigger">
+                        <div class="card-icon">🔑</div>
+                        <h3>Join Room</h3>
+                        <p>Enter a code to view shared moments.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Room View -->
+            <section id="room-view" class="view">
+                <div class="room-header">
+                    <button class="back-btn" id="btn-back-home">← Back</button>
+                    <h2>Room: <span id="display-room-code">......</span></h2>
+                </div>
+                
+                <div class="actions-bar">
+                    <div class="search-box">
+                        <input type="text" id="tag-search" placeholder="Search by tags (e.g. dog, receipt)...">
+                    </div>
+                    <button class="primary-btn" id="btn-upload-trigger">Upload Photo</button>
+                    <button class="primary-btn secondary" id="btn-face-search-trigger">🔍 Search by Face</button>
+                </div>
+
+                <div class="gallery-container" id="gallery">
+                    <!-- Photos will be loaded here -->
+                    <div class="empty-state">No photos yet. Be the first to upload!</div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Modals -->
+        <div id="join-room-modal" class="modal">
+            <div class="modal-content glass-card">
+                <h3>Join a Room</h3>
+                <input type="text" id="room-code-input" placeholder="Enter 6-digit code" maxlength="6">
+                <div class="modal-footer">
+                    <button class="secondary-btn modal-close">Cancel</button>
+                    <button class="primary-btn" id="btn-join-room">Join</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="upload-modal" class="modal">
+            <div class="modal-content glass-card">
+                <h3>Upload to Room</h3>
+                <div class="file-drop-zone" id="drop-zone">
+                    <input type="file" id="file-input" hidden accept="image/*">
+                    <div class="drop-zone-content">
+                        <span class="icon">📁</span>
+                        <p>Click or drag photo here</p>
+                    </div>
+                </div>
+                <div id="upload-preview" class="preview-container" style="display:none;">
+                    <img id="preview-image" src="" alt="Preview">
+                </div>
+                <div class="modal-footer">
+                    <button class="secondary-btn modal-close">Cancel</button>
+                    <button class="primary-btn" id="btn-upload-action" disabled>Upload & Process AI</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="face-detail-modal" class="modal">
+            <div class="modal-content glass-card wide-modal">
+                <h3>Face Detection & Recognition</h3>
+                <div class="face-detail-container">
+                    <div class="photo-viewer" id="face-photo-viewer">
+                        <img id="face-detail-image" src="" alt="Detail">
+                        <div id="face-markers-container"></div>
+                    </div>
+                    <div class="face-info-panel">
+                        <h4>Detected People</h4>
+                        <div id="detected-faces-list"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="secondary-btn modal-close">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="face-search-modal" class="modal">
+            <div class="modal-content glass-card">
+                <h3>Search by Face</h3>
+                <p>Upload a photo of a person to find them in your gallery.</p>
+                <div class="file-drop-zone" id="face-search-drop-zone">
+                    <input type="file" id="face-search-input" hidden accept="image/*">
+                    <div class="drop-zone-content">
+                        <span class="icon">👤</span>
+                        <p>Click to select person's photo</p>
+                    </div>
+                </div>
+                <div id="face-search-preview" class="preview-container" style="display:none;">
+                    <img id="face-search-preview-image" src="" alt="Preview">
+                </div>
+                <div class="modal-footer">
+                    <button class="secondary-btn modal-close">Cancel</button>
+                    <button class="primary-btn" id="btn-face-search-action" disabled>Find Person</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="loading-overlay">
+        <div class="loader"></div>
+        <p id="loading-text">Processing AI Tags...</p>
+    </div>
+
+    <script src="app.js?v=2"></script>
+</body>
+</html>
