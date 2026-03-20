@@ -30,8 +30,19 @@ export const photoService = {
     });
     return response.data;
   },
-  search: async (roomId, tag = '') => {
-    const response = await api.get(`/search/?room_id=${roomId}${tag ? `&tag=${tag}` : ''}`);
+  search: async (roomId, tag = '', filters = {}) => {
+    let url = `/search/?room_id=${roomId}`;
+    if (tag) url += `&tag=${encodeURIComponent(tag)}`;
+    
+    if (filters.dateFrom) url += `&date_from=${filters.dateFrom}`;
+    if (filters.dateTo) url += `&date_to=${filters.dateTo}`;
+    if (filters.day) url += `&day=${filters.day}`;
+    if (filters.month) url += `&month=${filters.month}`;
+    if (filters.year) url += `&year=${filters.year}`;
+    if (filters.type) url += `&type=${filters.type}`;
+    if (filters.category) url += `&category=${filters.category}`;
+    
+    const response = await api.get(url);
     return response.data;
   },
   searchByFace: async (roomId, file) => {
@@ -41,6 +52,23 @@ export const photoService = {
     const response = await api.post('/face/search/', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
+    return response.data;
+  },
+  semanticSearch: async (roomId, query, filters = {}) => {
+    let url = `/semantic-search/?room_id=${roomId}&query=${encodeURIComponent(query)}`;
+    
+    if (filters.dateFrom) url += `&date_from=${filters.dateFrom}`;
+    if (filters.dateTo) url += `&date_to=${filters.dateTo}`;
+    if (filters.day) url += `&day=${filters.day}`;
+    if (filters.month) url += `&month=${filters.month}`;
+    if (filters.year) url += `&year=${filters.year}`;
+    if (filters.type) url += `&type=${filters.type}`;
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+  momentSearch: async (roomId, query) => {
+    const response = await api.get(`/video/moment-search/?q=${encodeURIComponent(query)}&room_id=${roomId}`);
     return response.data;
   },
 };

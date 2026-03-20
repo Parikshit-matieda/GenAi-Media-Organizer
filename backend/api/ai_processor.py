@@ -1,9 +1,16 @@
 import cv2
-import pytesseract
+import easyocr
 from ultralytics import YOLO
 import os
 import numpy as np
 from django.conf import settings
+from PIL import Image
+import importlib.util
+
+# Check if sentence-transformers is installed without importing it yet
+CLIP_AVAILABLE = importlib.util.find_spec("sentence_transformers") is not None
+if not CLIP_AVAILABLE:
+    print("WARNING: sentence-transformers not found. Semantic search will be disabled.")
 
 # Attempt to import face_recognition
 try:
@@ -13,12 +20,37 @@ except ImportError:
     FACE_REC_AVAILABLE = False
     print("WARNING: face_recognition library not found. Face matching will be disabled.")
 
-# Configure Tesseract Path for Windows
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# EasyOCR Reader (Lazy Load)
+_ocr_reader = None
+def get_ocr_reader():
+    global _ocr_reader
+    if _ocr_reader is None:
+        print("Loading EasyOCR Reader (en)...")
+        _ocr_reader = easyocr.Reader(['en'], gpu=False) # Default to CPU to avoid CUDA issues
+    return _ocr_reader
 
 # Load YOLOv8 model
 MODEL_PATH = os.path.join(settings.BASE_DIR, 'yolov8n.pt')
 model = YOLO(MODEL_PATH) 
+
+# CLIP Model Initialization
+_clip_model = None
+def get_clip_model():
+    global _clip_model, CLIP_AVAILABLE
+    if _clip_model is not None:
+        return _clip_model
+    
+    if CLIP_AVAILABLE:
+        try:
+            print("Loading CLIP Model (clip-ViT-B-32)...")
+            from sentence_transformers import SentenceTransformer
+            _clip_model = SentenceTransformer('clip-ViT-B-32')
+            print("CLIP Model loaded successfully.")
+            return _clip_model
+        except Exception as e:
+            print(f"Error loading CLIP model: {e}")
+            CLIP_AVAILABLE = False
+    return None
 
 def process_image_ai(image_path):
     """
@@ -37,12 +69,16 @@ def process_image_ai(image_path):
             label = model.names[class_id]
             tags.add(label.lower())
 
-    # 2. OCR Detection
+    # 2. OCR Detection (EasyOCR)
     try:
-        img = cv2.imread(image_path)
-        text = pytesseract.image_to_string(img)
+        reader = get_ocr_reader()
+        results = reader.readtext(image_path)
+        text = " ".join([res[1] for res in results])
         text_lower = text.lower()
         
+        if text.strip():
+            tags.add("text_detected")
+
         # Rule-based OCR tags
         currency_symbols = ['$', '₹', '€', '£']
         if any(sym in text for sym in currency_symbols):
@@ -62,7 +98,8 @@ def process_image_ai(image_path):
                 tags.add(key)
                 tags.add(val)
     except Exception as e:
-        print(f"OCR Error: {e}")
+        print(f"EasyOCR Error: {e}")
+        # Optional: Fallback to Tesseract if needed, but for now we follow user request
 
     # 3. Smart Folder Rules
     if 'dog' in tags or 'cat' in tags:
@@ -174,3 +211,34 @@ def detect_faces(image_path):
         # Convert to (top, right, bottom, left) format and ensure standard Python ints
         locations.append((int(y), int(x + w), int(y + h), int(x)))
     return locations
+
+def generate_clip_embedding(image_path):
+    """
+    Generates a semantic embedding for an image using CLIP.
+    """
+    model = get_clip_model()
+    if model is None:
+        return None
+    
+    try:
+        img = Image.open(image_path)
+        embedding = model.encode(img)
+        return embedding.tolist()
+    except Exception as e:
+        print(f"Error generating CLIP embedding: {e}")
+        return None
+
+def get_text_embedding(text):
+    """
+    Generates a semantic embedding for a text query using CLIP.
+    """
+    model = get_clip_model()
+    if model is None:
+        return None
+    
+    try:
+        embedding = model.encode(text)
+        return embedding.tolist()
+    except Exception as e:
+        print(f"Error generating text embedding: {e}")
+        return None

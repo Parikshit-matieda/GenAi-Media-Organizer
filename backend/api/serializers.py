@@ -25,6 +25,13 @@ class FaceSerializer(serializers.ModelSerializer):
 class MediaSerializer(serializers.ModelSerializer):
     tags = TagSerializer(many=True, read_only=True)
     detected_faces = FaceSerializer(many=True, read_only=True)
+    relevance = serializers.IntegerField(read_only=True, required=False)
+    similarity = serializers.FloatField(read_only=True, required=False)
+
     class Meta:
         model = Media
-        fields = ['media_id', 'user', 'room', 'image', 'thumbnail', 'medium', 'webp', 'upload_time', 'tags', 'detected_faces']
+        fields = [
+            'media_id', 'user', 'room', 'image', 'thumbnail', 'medium', 
+            'webp', 'upload_time', 'tags', 'detected_faces', 
+            'relevance', 'similarity', 'media_type', 'external_id'
+        ]

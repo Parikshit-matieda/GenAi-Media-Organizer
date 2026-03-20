@@ -1,12 +1,37 @@
 @import "tailwindcss";
 
+:root {
+  --background: #ffffff;
+  --foreground: #111111;
+  --accent-gold: #d4af37;
+  --accent-indigo: #6366f1;
+  --card-bg: rgba(0, 0, 0, 0.03);
+  --card-border: rgba(0, 0, 0, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --text-muted: #666666;
+  --input-bg: rgba(0, 0, 0, 0.05);
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --card-border: rgba(255, 255, 255, 0.1);
+  --glass-bg: rgba(10, 10, 10, 0.7);
+  --text-muted: #a1a1aa;
+  --input-bg: rgba(255, 255, 255, 0.05);
+}
+
 @theme {
-  --color-background: #0a0a0a;
-  --color-foreground: #ededed;
-  --color-accent-gold: #d4af37;
-  --color-accent-indigo: #6366f1;
-  --color-primary: #111111;
-  --color-secondary: #1a1a1a;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent-gold: var(--accent-gold);
+  --color-accent-indigo: var(--accent-indigo);
+  --color-card-bg: var(--card-bg);
+  --color-card-border: var(--card-border);
+  --color-text-muted: var(--text-muted);
+  --color-glass-bg: var(--glass-bg);
+  --color-input-bg: var(--input-bg);
   
   --font-outfit: "Outfit", sans-serif;
   
@@ -20,19 +45,36 @@
 
 @layer base {
   body {
-    background-color: var(--color-background);
-    color: var(--color-foreground);
+    background-color: var(--background);
+    color: var(--foreground);
     font-family: var(--font-outfit);
+    transition: background-color 0.3s ease, color 0.3s ease;
   }
 }
 
-
-
 .glass-card {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--card-bg);
   backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1rem;
+  border: 1px solid var(--card-border);
+  border-radius: 1.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.google-search-shadow {
+  box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 .premium-btn {
@@ -40,11 +82,18 @@
 }
 
 .secondary-btn {
-  @apply px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl border border-white/10 transition-all;
+  background-color: var(--card-bg);
+  color: var(--foreground);
+  @apply px-6 py-3 font-medium rounded-xl border transition-all;
+  border-color: var(--card-border);
+}
+
+.secondary-btn:hover {
+  background-color: rgba(128, 128, 128, 0.1);
 }
 
 .glow-text {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-accent-gold to-yellow-200;
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-accent-gold to-yellow-500;
 }
 
 .mirror-mode {

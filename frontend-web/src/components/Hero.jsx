@@ -22,7 +22,7 @@ const Hero = ({ onJoin, onCreate }) => {
         >
           Smart Gallery <span className="glow-text">AI</span>
         </motion.h1>
-        <p className="text-xl text-gray-400 mb-12 font-medium">
+        <p className="text-xl text-text-muted mb-12 font-medium">
           The future of event photo sharing. Fast, secure, and powered by intelligent face recognition.
         </p>
 
@@ -39,7 +39,7 @@ const Hero = ({ onJoin, onCreate }) => {
                 maxLength={6}
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-widest focus:outline-none focus:border-accent-gold transition-all"
+                className="w-full bg-input-bg border border-card-border rounded-xl px-4 py-3 text-center text-2xl font-bold tracking-widest focus:outline-none focus:border-accent-gold transition-all"
               />
             </div>
             <button 
@@ -62,7 +62,7 @@ const Hero = ({ onJoin, onCreate }) => {
           >
             <PlusCircle size={40} className="text-accent-gold" />
             <span className="text-lg font-semibold">Start New Event</span>
-            <span className="text-sm text-gray-400">Host your own room</span>
+            <span className="text-sm text-text-muted">Host your own room</span>
           </motion.button>
         </div>
       </motion.div>

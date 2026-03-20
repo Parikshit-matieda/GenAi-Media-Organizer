@@ -1,14 +1,24 @@
 from django.shortcuts import render
-from django.http import HttpResponse
+from django.db.models import Q, Case, When, Value, IntegerField
+
+from django.http import HttpResponse, FileResponse
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, viewsets
+from django.shortcuts import get_object_or_404
 from .models import Media, Tag, Room, RoomMember, Face
 from .serializers import MediaSerializer, RoomSerializer, UserSerializer, FaceSerializer
-from .ai_processor import process_image_ai, extract_face_encodings, compare_embeddings, FACE_REC_AVAILABLE
+from .ai_processor import process_image_ai, extract_face_encodings, compare_embeddings, FACE_REC_AVAILABLE, generate_clip_embedding, get_text_embedding
 import os
 import json
+import io
+import zipfile
+import mimetypes
+import numpy as np
 from django.conf import settings
+from PIL import Image
+import sys 
+import requests # Added requests for external API
 try:
     import face_recognition
     import dlib
@@ -16,123 +26,183 @@ try:
 except ImportError:
     print("WARNING: face_recognition or cv2 not found in views.py")
 
-class PhotoUploadView(APIView):
+# MODULE LEVEL LOGGING
+sys.stderr.write("\n\n!!! VIEWS.PY MODULE LOADED !!!\n\n")
+
+
+
+class MediaUploadView(APIView):
     def post(self, request, *args, **kwargs):
-        image = request.FILES.get('image')
+        media_file = request.FILES.get('image') # Frontend still sends as 'image' for now
         room_id = request.data.get('room_id')
         user = request.user if request.user.is_authenticated else None
 
-        if not image:
-            return Response({"error": "No image uploaded"}, status=status.HTTP_400_BAD_REQUEST)
+        if not media_file:
+            return Response({"error": "No file uploaded"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1. Save Media (Original)
+        # Detect media type
+        mime_type, _ = mimetypes.guess_type(media_file.name)
+        is_video = mime_type and mime_type.startswith('video')
+        media_type = 'video' if is_video else 'image'
+
+        # 1. Save Media
         media_obj = Media.objects.create(
             user=user,
             room_id=room_id,
-            image=image
+            image=media_file,
+            media_type=media_type
         )
         
-        # 2. Generate Optimized Versions (Thumbnail, Medium, WebP)
+        # 2. Generate Optimized Versions / Thumbnails
         try:
             from PIL import Image
             import io
             from django.core.files.base import ContentFile
             import os
 
-            img_path = media_obj.image.path
-            img = Image.open(img_path)
+            file_path = media_obj.image.path
             
-            # Convert to RGB if necessary (e.g. for PNG with alpha)
-            if img.mode in ("RGBA", "P"):
-                img = img.convert("RGB")
-
-            # Helper to save to ContentFile
             def get_content_file(image_obj, format='JPEG', quality=85):
                 buf = io.BytesIO()
                 image_obj.save(buf, format=format, quality=quality)
                 return ContentFile(buf.getvalue())
 
-            # A. Thumbnail (~300px)
-            thumb_img = img.copy()
-            thumb_img.thumbnail((300, 300))
-            thumb_name = os.path.basename(img_path).rsplit('.', 1)[0] + "_thumb.jpg"
-            media_obj.thumbnail.save(thumb_name, get_content_file(thumb_img), save=False)
+            if not is_video:
+                # IMAGE PROCESSING
+                img = Image.open(file_path)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
 
-            # B. Medium (~1200px)
-            medium_img = img.copy()
-            medium_img.thumbnail((1200, 1200))
-            medium_name = os.path.basename(img_path).rsplit('.', 1)[0] + "_medium.jpg"
-            media_obj.medium.save(medium_name, get_content_file(medium_img), save=False)
+                # A. Thumbnail (~300px)
+                thumb_img = img.copy()
+                thumb_img.thumbnail((300, 300))
+                thumb_name = os.path.basename(file_path).rsplit('.', 1)[0] + "_thumb.jpg"
+                media_obj.thumbnail.save(thumb_name, get_content_file(thumb_img), save=False)
 
-            # C. WebP Version
-            webp_name = os.path.basename(img_path).rsplit('.', 1)[0] + ".webp"
-            media_obj.webp.save(webp_name, get_content_file(medium_img, format='WEBP'), save=False)
+                # B. Medium (~1200px)
+                medium_img = img.copy()
+                medium_img.thumbnail((1200, 1200))
+                medium_name = os.path.basename(file_path).rsplit('.', 1)[0] + "_medium.jpg"
+                media_obj.medium.save(medium_name, get_content_file(medium_img), save=False)
+
+                # C. WebP Version
+                webp_name = os.path.basename(file_path).rsplit('.', 1)[0] + ".webp"
+                media_obj.webp.save(webp_name, get_content_file(medium_img, format='WEBP'), save=False)
+            else: # This is the video processing block
+                # VIDEO PROCESSING - Extract first frame for thumbnail
+                import cv2
+                cap = cv2.VideoCapture(file_path)
+                success, frame = cap.read()
+                if success:
+                    # Convert BGR to RGB
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    img = Image.fromarray(frame_rgb)
+                    
+                    # Store as thumbnail
+                    thumb_img = img.copy()
+                    thumb_img.thumbnail((400, 400)) # Slightly larger for video
+                    thumb_name = os.path.basename(file_path).rsplit('.', 1)[0] + "_vthumb.jpg"
+                    media_obj.thumbnail.save(thumb_name, get_content_file(thumb_img), save=False)
+                cap.release()
+
+                # SYNC WITH EXTERNAL VIDEO API
+                try:
+                    EXTERNAL_API_URL = "http://10.212.243.134:5000/upload"
+                    sync_log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'sync_debug.txt')
+                    with open(sync_log_path, 'a') as sl:
+                        sl.write(f"Attempting sync for Media {media_obj.media_id}...\n")
+                        with open(file_path, 'rb') as f:
+                            files = {'file': (os.path.basename(file_path), f)}
+                            # Increase timeout for upload to 60s
+                            response = requests.post(EXTERNAL_API_URL, files=files, timeout=60)
+                            sl.write(f"External upload response: {response.status_code}\n")
+                            if response.status_code == 200:
+                                data = response.json()
+                                media_obj.external_id = data.get('video_id')
+                                # CRITICAL: Save immediately so we don't lose this ID even if subsequent AI fails
+                                media_obj.save()
+                                sl.write(f"Successfully saved ExtID {media_obj.external_id} for Media {media_obj.media_id}\n")
+                            else:
+                                sl.write(f"Sync failed. Status: {response.status_code}, Body: {response.text[:100]}\n")
+                except Exception as e:
+                    with open(sync_log_path, 'a') as sl:
+                        sl.write(f"Sync exception: {str(e)}\n")
+                    print(f"Error syncing with external video API: {e}")
 
             media_obj.save()
         except Exception as e:
-            print(f"Error generating optimized images: {e}")
+            print(f"Error generating optimized media: {e}")
 
-        image_path = media_obj.image.path
-        
-        # 2. General AI Processing (Tags)
-        tags_list = process_image_ai(image_path)
-        for tag_name in tags_list:
-            tag_obj, created = Tag.objects.get_or_create(tag_name=tag_name)
-            media_obj.tags.add(tag_obj)
+        # AI Processing (Only for images)
+        if not is_video:
+            image_path = media_obj.image.path
             
-        # 3. Face Detection & Embedding Storage
-        face_data = extract_face_encodings(image_path)
-        
-        def get_next_person_name(room_id):
-            named_faces = Face.objects.filter(media__room_id=room_id, person_name__startswith="Person ")
-            max_n = 0
-            for f in named_faces:
-                try:
-                    parts = f.person_name.split(" ")
-                    if len(parts) > 1:
-                        n = int(parts[1])
-                        if n > max_n: max_n = n
-                except (ValueError, IndexError):
-                    continue
-            return f"Person {max_n + 1}"
-
-        for face in face_data:
-            new_encoding = face['encoding']
-            person_name = None
-            
-            # Find possible matches in the same room
-            room_faces = list(Face.objects.filter(media__room_id=room_id).exclude(embedding__isnull=True))
-            if room_faces:
-                embeddings = [f.embedding for f in room_faces]
-                matched_indices = compare_embeddings(new_encoding, embeddings)
+            # 3. General AI Processing (Tags)
+            try:
+                tags_list = process_image_ai(image_path)
+                for tag_name in tags_list:
+                    tag_obj, created = Tag.objects.get_or_create(tag_name=tag_name)
+                    media_obj.tags.add(tag_obj)
+            except Exception as e:
+                print(f"AI Tagging error: {e}")
                 
-                if matched_indices:
-                    # Prefer an already named match
-                    for idx in matched_indices:
-                        if room_faces[idx].person_name:
-                            person_name = room_faces[idx].person_name
-                            break
-                    
-                    if not person_name:
-                        # Cluster found but no name yet. Assign one.
-                        person_name = get_next_person_name(room_id)
-                        # Optional: Update the match too? (Better for consistency)
-                        match_face = room_faces[matched_indices[0]]
-                        match_face.person_name = person_name
-                        match_face.save()
-            
-            if not person_name:
-                person_name = get_next_person_name(room_id)
+            # 4. Face Detection
+            try:
+                face_data = extract_face_encodings(image_path)
+                def get_next_person_name(room_id):
+                    named_faces = Face.objects.filter(media__room_id=room_id, person_name__startswith="Person ")
+                    max_n = 0
+                    for f in named_faces:
+                        try:
+                            parts = f.person_name.split(" ")
+                            if len(parts) > 1:
+                                n = int(parts[1])
+                                if n > max_n: max_n = n
+                        except (ValueError, IndexError): continue
+                    return f"Person {max_n + 1}"
 
-            Face.objects.create(
-                media=media_obj,
-                embedding=new_encoding,
-                location_data=face['location'],
-                person_name=person_name
-            )
-            
-            # Add a tag for this person to enable "Folder" view in UI
-            tag_obj, _ = Tag.objects.get_or_create(tag_name=person_name)
+                for face in face_data:
+                    new_encoding = face['encoding']
+                    person_name = None
+                    room_faces = list(Face.objects.filter(media__room_id=room_id).exclude(embedding__isnull=True))
+                    if room_faces:
+                        embeddings = [f.embedding for f in room_faces]
+                        matched_indices = compare_embeddings(new_encoding, embeddings)
+                        if matched_indices:
+                            for idx in matched_indices:
+                                if room_faces[idx].person_name:
+                                    person_name = room_faces[idx].person_name
+                                    break
+                            if not person_name:
+                                person_name = get_next_person_name(room_id)
+                                match_face = room_faces[matched_indices[0]]
+                                match_face.person_name = person_name
+                                match_face.save()
+                    if not person_name:
+                        person_name = get_next_person_name(room_id)
+
+                    Face.objects.create(
+                        media=media_obj,
+                        embedding=new_encoding,
+                        location_data=face['location'],
+                        person_name=person_name
+                    )
+                    tag_obj, _ = Tag.objects.get_or_create(tag_name=person_name)
+                    media_obj.tags.add(tag_obj)
+            except Exception as e:
+                print(f"AI Face detection error: {e}")
+                
+            # 5. CLIP Semantic Embedding
+            try:
+                clip_emb = generate_clip_embedding(image_path)
+                if clip_emb:
+                    media_obj.clip_embedding = clip_emb
+                    media_obj.save()
+            except Exception as e:
+                print(f"AI CLIP error: {e}")
+        else:
+            # Video specific tags
+            tag_obj, _ = Tag.objects.get_or_create(tag_name='video')
             media_obj.tags.add(tag_obj)
             
         return Response(MediaSerializer(media_obj).data, status=status.HTTP_201_CREATED)
@@ -201,13 +271,15 @@ class ClusterRenameView(APIView):
         # 1. Update all Faces
         faces_updated = Face.objects.filter(
             media__room=room_obj,
-            person_name=old_name
+            person_name__iexact=old_name
         ).update(person_name=new_name)
+        
+        print(f"DEBUG: Renaming '{old_name}' to '{new_name}' in room {room_obj.room_code}. Faces updated: {faces_updated}")
 
         # 2. Update Tags
         media_count = 0
         try:
-            old_tag = Tag.objects.filter(tag_name=old_name).first()
+            old_tag = Tag.objects.filter(tag_name__iexact=old_name).first()
             if old_tag:
                 new_tag_obj, _ = Tag.objects.get_or_create(tag_name=new_name)
                 media_with_old_tag = Media.objects.filter(
@@ -404,15 +476,61 @@ class SearchView(APIView):
         text_query = request.query_params.get('text')
         room_id = request.query_params.get('room_id')
         
+        # New filters
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        media_type = request.query_params.get('type')
+        category = request.query_params.get('category')
+        
+        # Granular date filters
+        spec_day = request.query_params.get('day')
+        spec_month = request.query_params.get('month')
+        spec_year = request.query_params.get('year')
+        
         media_qs = Media.objects.all()
         
         if room_id:
             media_qs = media_qs.filter(room_id=room_id)
+            
+        # Apply Filters
+        if date_from:
+            media_qs = media_qs.filter(upload_time__date__gte=date_from)
+        if date_to:
+            media_qs = media_qs.filter(upload_time__date__lte=date_to)
+            
+        if spec_day:
+            media_qs = media_qs.filter(upload_time__day=spec_day)
+        if spec_month:
+            # Month can be 1-12 or YYYY-MM. Handle both.
+            if '-' in spec_month:
+                y, m = spec_month.split('-')
+                media_qs = media_qs.filter(upload_time__year=y, upload_time__month=m)
+            else:
+                media_qs = media_qs.filter(upload_time__month=spec_month)
+        if spec_year:
+            media_qs = media_qs.filter(upload_time__year=spec_year)
+        if media_type:
+            media_qs = media_qs.filter(image__icontains=f".{media_type}")
+        if category:
+            if category == 'documents':
+                media_qs = media_qs.filter(tags__tag_name__in=['receipt', 'invoice', 'document', 'text_detected'])
+            elif category == 'people':
+                media_qs = media_qs.filter(detected_faces__isnull=False)
         
-        if tag_query:
-            media_qs = media_qs.filter(tags__tag_name__icontains=tag_query)
-        if text_query:
-            media_qs = media_qs.filter(tags__tag_name__icontains=text_query)
+        query = tag_query or text_query
+        if query:
+            # Ranking / Relevance Scoring
+            media_qs = media_qs.annotate(
+                relevance=Case(
+                    When(tags__tag_name__iexact=query, then=Value(10)),
+                    When(detected_faces__person_name__iexact=query, then=Value(8)),
+                    When(tags__tag_name__icontains=query, then=Value(5)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            ).filter(relevance__gt=0).order_by('-relevance', '-upload_time')
+        else:
+            media_qs = media_qs.order_by('-upload_time')
             
         serializer = MediaSerializer(media_qs.distinct(), many=True)
         return Response(serializer.data)
@@ -450,5 +568,150 @@ class AIHealthCheckView(APIView):
             "face_recognition_version": face_recognition.__version__ if FACE_REC_AVAILABLE else None,
             "dlib_version": dlib.__version__ if FACE_REC_AVAILABLE else None,
             "dlib_cuda": dlib.DLIB_USE_CUDA if FACE_REC_AVAILABLE else None,
-            "opencv_version": os.environ.get('OPENCV_VERSION', 'Check logs') # OpenCV version is tricky direct
+            "opencv_version": os.environ.get('OPENCV_VERSION', 'Check logs'),
+            "clip_available": CLIP_AVAILABLE
         })
+
+class SemanticSearchView(APIView):
+    """
+    Search by natural language query using CLIP.
+    """
+    def get(self, request):
+        query = request.query_params.get('query')
+        room_id = request.query_params.get('room_id')
+        
+        if not query:
+            return Response({"error": "query is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        q_emb = get_text_embedding(query)
+        if not q_emb:
+            return Response({"error": "CLIP model not available"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Fetch all media with embeddings for this room
+        media_qs = Media.objects.exclude(clip_embedding__isnull=True)
+        if room_id:
+            media_qs = media_qs.filter(room_id=room_id)
+            
+        if not media_qs.exists():
+            return Response([])
+
+        # Calculate similarity (optimized matrix multiplication)
+        media_list = list(media_qs)
+        m_vecs = np.array([m.clip_embedding for m in media_list])
+        q_vec = np.array(q_emb)
+        
+        # Normalize vectors for cosine similarity
+        q_norm = np.linalg.norm(q_vec)
+        m_norms = np.linalg.norm(m_vecs, axis=1)
+        
+        # Avoid division by zero
+        q_vec = q_vec / (q_norm + 1e-8)
+        m_vecs = m_vecs / (m_norms[:, np.newaxis] + 1e-8)
+        
+        # Dot product of normalized vectors = Cosine Similarity
+        similarities = np.dot(m_vecs, q_vec)
+        
+        # Build results with similarity and apply filters
+        final_results = []
+        
+        # New filters for Semantic Search
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        media_type = request.query_params.get('type')
+        
+        spec_day = request.query_params.get('day')
+        spec_month = request.query_params.get('month')
+        spec_year = request.query_params.get('year')
+        
+        for i, m in enumerate(media_list):
+            sim = float(similarities[i])
+            if sim > 0.05:
+                # Apply same filtering logic as SearchView
+                if date_from and m.upload_time.date().isoformat() < date_from: continue
+                if date_to and m.upload_time.date().isoformat() > date_to: continue
+                
+                if spec_day and m.upload_time.day != int(spec_day): continue
+                if spec_month:
+                    if '-' in spec_month:
+                        y, mon = map(int, spec_month.split('-'))
+                        if m.upload_time.year != y or m.upload_time.month != mon: continue
+                    elif m.upload_time.month != int(spec_month): continue
+                if spec_year and m.upload_time.year != int(spec_year): continue
+                
+                if media_type and f".{media_type}" not in m.image.name.lower(): continue
+                
+                final_results.append((m, sim))
+            
+        # Sort by similarity (descending)
+        final_results.sort(key=lambda x: x[1], reverse=True)
+        top_results = final_results[:30]
+        
+        # Build response with similarity scores
+        data = []
+        for m, s in top_results:
+            serialized = MediaSerializer(m).data
+            serialized['similarity'] = s
+            data.append(serialized)
+            
+        return Response(data)
+
+class VideoMomentSearchView(APIView):
+    """
+    Searches for moments inside videos using the external CLIP-based API.
+    """
+    def get(self, request):
+        query = request.query_params.get('q')
+        room_id = request.query_params.get('room_id')
+        
+        if not query:
+            return Response({"error": "query (q) is required"}, status=400)
+            
+        with open('search_debug.txt', 'a') as f:
+            f.write(f"\n--- Search Triggered: {query} (Room Filter: {room_id}) ---\n")
+            try:
+                EXTERNAL_SEARCH_URL = "http://10.212.243.134:5000/search"
+                # Increase timeout to 60s for intensive CLIP search
+                response = requests.get(EXTERNAL_SEARCH_URL, params={'q': query}, timeout=60)
+                
+                if response.status_code != 200:
+                    f.write(f"External API error: {response.status_code}\n")
+                    return Response({"error": f"External search API failed ({response.status_code})"}, status=502)
+                    
+                results = response.json().get('results', [])
+                f.write(f"Raw External Results: {results}\n")
+                
+                # Map external results to local Media objects
+                final_results = []
+                mismatched_results = []
+                
+                for res in results:
+                    ext_id = res.get('id')
+                    media = Media.objects.filter(external_id=ext_id).first()
+                    if media:
+                        serialized = MediaSerializer(media).data
+                        serialized['moment_timestamp'] = res.get('timestamp')
+                        serialized['similarity'] = res.get('similarity')
+                        serialized['stream_url'] = f"http://10.212.243.134:5000/stream/{ext_id}"
+                        
+                        # Check room
+                        if not room_id or str(media.room_id) == room_id:
+                            final_results.append(serialized)
+                        else:
+                            mismatched_results.append(serialized)
+                    else:
+                        f.write(f"Could NOT match ext_id {ext_id} to any local Media\n")
+                
+                # If no results in current room, but some exist elsewhere, return them for now
+                # BUT only if we are in this relaxed debug mode. 
+                # For long-term, we should stick to room filtering.
+                if not final_results and mismatched_results:
+                    f.write(f"Falling back to {len(mismatched_results)} results from other rooms.\n")
+                    final_results = mismatched_results
+                
+                f.write(f"Final results count: {len(final_results)}\n")
+                return Response(final_results)
+            except Exception as e:
+                f.write(f"Search exception: {str(e)}\n")
+                return Response({"error": f"Search failed: {str(e)}"}, status=500)
+
+

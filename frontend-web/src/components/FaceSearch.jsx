@@ -114,7 +114,7 @@ const FaceSearch = ({ isOpen, onClose, onSearch }) => {
             <div className="p-6 border-b border-white/10 flex justify-between items-center">
               <div>
                 <h2 className="text-2xl font-bold glow-text">Find My Photos</h2>
-                <p className="text-sm text-gray-400">Upload a selfie to find all photos containing you.</p>
+                <p className="text-sm text-text-muted">Upload a selfie to find all photos containing you.</p>
               </div>
               <button 
                 onClick={onClose}
@@ -129,22 +129,22 @@ const FaceSearch = ({ isOpen, onClose, onSearch }) => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <button 
                     onClick={startCamera}
-                    className="flex flex-col items-center justify-center gap-4 py-10 bg-white/5 border-2 border-dashed border-white/20 rounded-3xl hover:bg-white/10 hover:border-accent-indigo transition-all group"
+                    className="flex flex-col items-center justify-center gap-4 py-10 bg-card-bg border-2 border-dashed border-card-border rounded-3xl hover:bg-white/10 hover:border-accent-indigo transition-all group"
                   >
                     <div className="w-14 h-14 bg-accent-indigo/20 rounded-full flex items-center justify-center text-accent-indigo group-hover:scale-110 transition-transform">
                       <Camera size={28} />
                     </div>
-                    <span className="font-semibold">Take a Selfie</span>
+                    <span className="font-semibold text-foreground">Take a Selfie</span>
                   </button>
 
                   <button 
                     onClick={() => { fileInputRef.current?.click(); }}
-                    className="flex flex-col items-center justify-center gap-4 py-10 bg-white/5 border-2 border-dashed border-white/20 rounded-3xl hover:bg-white/10 hover:border-accent-gold transition-all group"
+                    className="flex flex-col items-center justify-center gap-4 py-10 bg-card-bg border-2 border-dashed border-card-border rounded-3xl hover:bg-white/10 hover:border-accent-gold transition-all group"
                   >
                     <div className="w-14 h-14 bg-accent-gold/20 rounded-full flex items-center justify-center text-accent-gold group-hover:scale-110 transition-transform">
                       <Upload size={28} />
                     </div>
-                    <span className="font-semibold">Upload Photo</span>
+                    <span className="font-semibold text-foreground">Upload Photo</span>
                   </button>
                   <input type="file" ref={fileInputRef} onChange={handleFileChange} hidden accept="image/*" />
                 </div>
@@ -199,7 +199,7 @@ const FaceSearch = ({ isOpen, onClose, onSearch }) => {
                   </div>
                   <div className="bg-accent-gold/5 border border-accent-gold/20 rounded-2xl p-4 flex items-start gap-3">
                     <CheckCircle2 size={18} className="text-accent-gold shrink-0 mt-0.5" />
-                    <p className="text-xs text-gray-300">
+                    <p className="text-xs text-text-muted">
                       Our AI will analyze your facial features to match you in the entire gallery. Privacy is our priority.
                     </p>
                   </div>

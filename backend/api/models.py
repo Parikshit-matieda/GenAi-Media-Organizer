@@ -34,6 +34,9 @@ class Media(models.Model):
     webp = models.ImageField(upload_to='webp/%Y/%m/%d/', null=True, blank=True)
     upload_time = models.DateTimeField(auto_now_add=True)
     tags = models.ManyToManyField(Tag, related_name='media_files')
+    media_type = models.CharField(max_length=10, choices=[('image', 'Image'), ('video', 'Video')], default='image')
+    external_id = models.IntegerField(null=True, blank=True) # ID from external video search API
+    clip_embedding = models.JSONField(null=True, blank=True) # Stores 512-d CLIP vector
 
     def __str__(self):
         return f"Media {self.media_id} by {self.user.username if self.user else 'Unknown'}"

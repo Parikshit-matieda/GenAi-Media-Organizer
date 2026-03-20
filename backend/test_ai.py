@@ -1,4 +1,5 @@
 import cv2
+import easyocr
 import pytesseract
 from ultralytics import YOLO
 import os
@@ -11,6 +12,13 @@ class MockSettings:
 settings = MockSettings()
 
 # Standalone logic (mirrored from ai_processor.py but without Django dependencies)
+_ocr_reader = None
+def get_ocr_reader():
+    global _ocr_reader
+    if _ocr_reader is None:
+        _ocr_reader = easyocr.Reader(['en'], gpu=False)
+    return _ocr_reader
+
 def process_image_ai_standalone(image_path):
     # Configure Tesseract Path
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -31,12 +39,16 @@ def process_image_ai_standalone(image_path):
             tags.add(label.lower())
     
     try:
-        img = cv2.imread(image_path)
-        text = pytesseract.image_to_string(img)
+        reader = get_ocr_reader()
+        results = reader.readtext(image_path)
+        print(f"DEBUG: EasyOCR results: {results}")
+        text = " ".join([res[1] for res in results])
         if text.strip():
             tags.add("text_detected")
     except Exception as e:
-        print(f"OCR Error: {e}")
+        import traceback
+        traceback.print_exc()
+        print(f"EasyOCR Error: {e}")
         
     return list(tags)
 
